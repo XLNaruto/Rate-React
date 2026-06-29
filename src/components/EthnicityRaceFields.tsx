@@ -63,10 +63,10 @@ const EthnicityRaceFields = ({
   const races = racesProp ?? live.races;
   // After a failed submit (error set), show a message under EVERY missing
   // required level — not just the first — so each section flags itself.
-  const fieldErrors = error
+  const fieldErrors: Partial<Record<DemographicField, string>> = error
     ? collectRequiredDemographicErrors(value, ethnicities, races)
     : {};
-  const FieldError = ({ field }: { field: DemographicField }) =>
+  const fieldError = (field: DemographicField) =>
     fieldErrors[field] ? (
       <p className="mt-1.5 text-xs text-red-500">{fieldErrors[field]}</p>
     ) : null;
@@ -142,7 +142,7 @@ const EthnicityRaceFields = ({
           }))}
           placeholder="Select your ethnicity"
         />
-        <FieldError field="ethnicity" />
+        {fieldError("ethnicity")}
       </div>
 
       {/* Sub-ethnicities — only when the picked ethnicity has them; multi select */}
@@ -159,7 +159,7 @@ const EthnicityRaceFields = ({
               />
             ))}
           </div>
-          <FieldError field="subEthnicity" />
+          {fieldError("subEthnicity")}
         </div>
       )}
 
@@ -176,7 +176,7 @@ const EthnicityRaceFields = ({
             />
           ))}
         </div>
-        <FieldError field="race" />
+        {fieldError("race")}
       </div>
 
       {/* Sub-races — only when a selected race has them; multi select */}
@@ -193,7 +193,7 @@ const EthnicityRaceFields = ({
               />
             ))}
           </div>
-          <FieldError field="subRace" />
+          {fieldError("subRace")}
         </div>
       )}
 

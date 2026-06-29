@@ -24,11 +24,11 @@ export const useDemographicsData = (): DemographicsData => {
   const [data, setData] = useState<DemographicsData | null>(cache);
 
   useEffect(() => {
-    if (cache) {
-      setData(cache);
-      return;
-    }
+    // `data` already initialises to `cache`, so nothing to do if it's loaded.
+    if (cache) return;
     let cancelled = false;
+    // Kick off (or join) the one shared fetch; resolve asynchronously so we
+    // never call setState synchronously inside the effect body.
     inflight ??= Promise.all([getEthnicities(), getRaces()]).then(
       ([ethnicities, races]) => {
         cache = { ethnicities, races };
