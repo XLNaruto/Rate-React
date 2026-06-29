@@ -1,5 +1,7 @@
 import { toAbsoluteUrl } from "../utils/Assets";
 import SmartImage from "./SmartImage";
+import DemographicsSummary from "./DemographicsSummary";
+import type { RaceAndEthnicityPayload } from "../data/demographics";
 
 const reactionMap: Record<string, { gif: string; bg: string; size: number }> = {
   like: { gif: "media/reactions/like.gif", bg: "bg-react-like", size: 25 },
@@ -17,7 +19,10 @@ type FeedbackSummaryProps = {
   email?: string;
   age?: string;
   gender?: string;
+  postalCode?: string;
+  services?: string[];
   description?: string;
+  raceAndEthnicity?: RaceAndEthnicityPayload;
 };
 
 const FeedbackSummary = ({
@@ -26,7 +31,10 @@ const FeedbackSummary = ({
   email,
   age,
   gender,
+  postalCode,
+  services,
   description,
+  raceAndEthnicity,
 }: FeedbackSummaryProps) => {
   const r = reactionMap[reaction];
 
@@ -48,6 +56,30 @@ const FeedbackSummary = ({
           {rating}
         </span>
       </div>
+
+      {services && services.length > 0 && (
+        <div className="mb-5">
+          <div className="flex items-center gap-2 font-semibold mb-1.5">
+            <SmartImage
+              wrapperClassName="block w-[18px] h-[18px] shrink-0"
+              className="w-full h-full"
+              src={toAbsoluteUrl("media/icons/filter-mail-edit.svg")}
+              alt="business service"
+            />
+            Business Service:
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {services.map((name) => (
+              <span
+                key={name}
+                className="rounded-full bg-white border border-option-border text-brand text-[13px] font-medium px-3 py-1.5"
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {email && (
         <div className="mb-5">
@@ -94,8 +126,23 @@ const FeedbackSummary = ({
         </div>
       )}
   
+      {postalCode && (
+        <div className="mb-5">
+          <div className="flex items-center gap-2 font-semibold mb-1">
+            <SmartImage
+              wrapperClassName="block w-[18px] h-[18px] shrink-0"
+              className="w-full h-full"
+              src={toAbsoluteUrl("media/icons/age.svg")}
+              alt="postal code"
+            />
+            Postal Code:
+          </div>
+          <p className="text-[14px] text-muted">{postalCode}</p>
+        </div>
+      )}
+
       {description && (
-        <div>
+        <div className="mb-5">
           <div className="flex items-center gap-2 font-semibold mb-1">
             <SmartImage
               wrapperClassName="block w-[18px] h-[18px] shrink-0"
@@ -108,6 +155,8 @@ const FeedbackSummary = ({
           <p className="text-[14px] text-muted">{description}</p>
         </div>
       )}
+
+      {raceAndEthnicity && <DemographicsSummary value={raceAndEthnicity} />}
     </div>
   );
 };

@@ -1,11 +1,21 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { toAbsoluteUrl } from "../utils/Assets";
 import FeedbackSummary from "./FeedbackSummary";
 import SmartImage from "./SmartImage";
 import SelectDropdown from "./SelectDropdown";
-import { submitReview } from "../api";
+import EthnicityRaceFields from "./EthnicityRaceFields";
+import BusinessServiceField from "./BusinessServiceField";
+import { submitReview, getScanQrProducts, type ScanQrProduct } from "../api";
 import { saveSubmission } from "../utils/SubmissionStore";
+import { useDemographicsData } from "../hooks/useDemographicsData";
+import {
+  buildRaceAndEthnicityPayload,
+  emptyDemographics,
+  validateRequiredDemographics,
+  type DemographicsValue,
+  type RaceAndEthnicityPayload,
+} from "../data/demographics";
 
 const GENDER_OPTIONS = [
   { label: "Male", value: "male" },
@@ -14,13 +24,38 @@ const GENDER_OPTIONS = [
 ];
 
 const reactions = [
-  { gif: "media/reactions/like.gif", alt: "like", bg: "bg-react-like", size: 24 },
-  { gif: "media/reactions/love.gif", alt: "love", bg: "bg-react-love", size: 28 },
-  { gif: "media/reactions/fire.gif", alt: "fire", bg: "bg-react-fire", size: 30 },
+  {
+    gif: "media/reactions/like.gif",
+    alt: "like",
+    bg: "bg-react-like",
+    size: 24,
+  },
+  {
+    gif: "media/reactions/love.gif",
+    alt: "love",
+    bg: "bg-react-love",
+    size: 28,
+  },
+  {
+    gif: "media/reactions/fire.gif",
+    alt: "fire",
+    bg: "bg-react-fire",
+    size: 30,
+  },
   { gif: "media/reactions/sad.gif", alt: "sad", bg: "bg-react-sad", size: 30 },
-  { gif: "media/reactions/haha.gif", alt: "haha", bg: "bg-react-haha", size: 32 },
+  {
+    gif: "media/reactions/haha.gif",
+    alt: "haha",
+    bg: "bg-react-haha",
+    size: 32,
+  },
   { gif: "media/reactions/wow.gif", alt: "wow", bg: "bg-react-wow", size: 32 },
-  { gif: "media/reactions/angry.gif", alt: "angry", bg: "bg-react-angry", size: 32 },
+  {
+    gif: "media/reactions/angry.gif",
+    alt: "angry",
+    bg: "bg-react-angry",
+    size: 32,
+  },
 ];
 
 const ratings = [1, 2, 3, 4, 5];
@@ -31,6 +66,9 @@ type UserInfoModes = {
   email_mode?: FieldMode | string;
   age_mode?: FieldMode | string;
   gender_mode?: FieldMode | string;
+  postal_code_mode?: FieldMode | string;
+  race_mode?: FieldMode | string;
+  business_service_mode?: FieldMode | string;
 };
 
 type FeedbackSubmission = {
@@ -39,7 +77,14 @@ type FeedbackSubmission = {
   email: string;
   age: string;
   gender: string;
+  postalCode: string;
   description: string;
+  productIds?: string[];
+  demographics?: DemographicsValue;
+  // Resolved names captured at submit time so the restored summary renders
+  // straight from local data — no id→list lookup that could go stale.
+  serviceNames?: string[];
+  raceAndEthnicity?: RaceAndEthnicityPayload;
 };
 
 type FeedbackFormProps = {
@@ -62,18 +107,41 @@ const FeedbackForm = ({
   const emailMode = (userInfoModes?.email_mode as FieldMode) ?? "required";
   const ageMode = (userInfoModes?.age_mode as FieldMode) ?? "off";
   const genderMode = (userInfoModes?.gender_mode as FieldMode) ?? "off";
+  // Postal code and ethnicity/race were always shown before these modes
+  // existed, so default to "optional" (visible, not enforced) when absent.
+  const postalMode = (userInfoModes?.postal_code_mode as FieldMode) ?? "optional";
+  const raceMode = (userInfoModes?.race_mode as FieldMode) ?? "optional";
+  // Live ethnicity/race reference data (with static fallback) — used both to
+  // render the fields and to resolve ids→names for the save payload.
+  const { ethnicities, races } = useDemographicsData();
+  // Business services are only offered on a business QR, and only when the
+  // admin has turned the field on (optional/required).
+  const serviceMode =
+    kind === "business_qr"
+      ? ((userInfoModes?.business_service_mode as FieldMode) ?? "off")
+      : "off";
 
   const [selectedReaction, setSelectedReaction] = useState<string | null>(
-    initialSubmission?.reaction ?? null
+    initialSubmission?.reaction ?? null,
   );
   const [selectedRating, setSelectedRating] = useState<number | null>(
-    initialSubmission?.rating ?? null
+    initialSubmission?.rating ?? null,
   );
   const [email, setEmail] = useState(initialSubmission?.email ?? "");
   const [age, setAge] = useState(initialSubmission?.age ?? "");
   const [gender, setGender] = useState(initialSubmission?.gender ?? "");
+  const [postalCode, setPostalCode] = useState(
+    initialSubmission?.postalCode ?? "",
+  );
   const [description, setDescription] = useState(
-    initialSubmission?.description ?? ""
+    initialSubmission?.description ?? "",
+  );
+  const [demographics, setDemographics] = useState<DemographicsValue>(
+    initialSubmission?.demographics ?? emptyDemographics,
+  );
+  const [products, setProducts] = useState<ScanQrProduct[]>([]);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>(
+    initialSubmission?.productIds ?? [],
   );
   const [consent, setConsent] = useState(!!initialSubmission);
   const [submitted, setSubmitted] = useState(!!initialSubmission);
@@ -81,6 +149,9 @@ const FeedbackForm = ({
   const emailRef = useRef<HTMLInputElement>(null);
   const ageRef = useRef<HTMLInputElement>(null);
   const genderRef = useRef<HTMLButtonElement>(null);
+  const postalCodeRef = useRef<HTMLInputElement>(null);
+  const serviceRef = useRef<HTMLButtonElement>(null);
+  const raceRef = useRef<HTMLDivElement>(null);
   const consentRef = useRef<HTMLDivElement>(null);
   const reactionRowRef = useRef<HTMLDivElement>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -100,6 +171,21 @@ const FeedbackForm = ({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartXRef = useRef<number | null>(null);
   const didDragRef = useRef(false);
+
+  // Load the business's services on every business QR (independent of the
+  // field's mode). On failure the list stays empty and the field — when shown —
+  // simply reads "No services found".
+  useEffect(() => {
+    if (kind !== "business_qr" || !slug) return;
+    let cancelled = false;
+    (async () => {
+      const list = await getScanQrProducts(slug);
+      if (!cancelled) setProducts(list);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, slug]);
 
   const getBtnCenter = (idx: number) => {
     const btn = ratingBtnRefs.current[idx];
@@ -193,6 +279,31 @@ const FeedbackForm = ({
       if (!v && genderMode === "required") e.gender = "Gender is required.";
     }
 
+    if (serviceMode === "required" && selectedProductIds.length === 0)
+      e.service = "Please select at least one service.";
+
+    // Postal code: when filled it must be 3–12 characters of letters, digits,
+    // dashes or spaces (covers postal-code formats across countries, e.g. UK
+    // "SW1A 1AA" / Canada "K1A-0B1"); required only when the mode says so.
+    if (postalMode !== "off") {
+      const v = postalCode.trim();
+      if (!v && postalMode === "required") e.postalCode = "Postal code is required.";
+      else if (v && !/^[A-Za-z0-9\- ]{3,12}$/.test(v))
+        e.postalCode = "Enter a valid postal code (3–12 characters).";
+    }
+
+    // race_mode governs the whole ethnicity/race block together: when required,
+    // the customer must fill every level that has options — ethnicity (+ its
+    // sub-ethnicities), race(s) (+ their sub-races).
+    if (raceMode === "required") {
+      const raceErr = validateRequiredDemographics(
+        demographics,
+        ethnicities,
+        races
+      );
+      if (raceErr) e.race = raceErr.message;
+    }
+
     if (!consent) e.consent = "Please acknowledge and consent to continue.";
 
     return e;
@@ -202,17 +313,23 @@ const FeedbackForm = ({
     const order: Array<keyof typeof refMap> = [
       "reaction",
       "rating",
+      "service",
       "email",
       "age",
       "gender",
+      "postalCode",
+      "race",
       "consent",
     ];
     const refMap = {
       reaction: reactionRowRef,
       rating: ratingRowRef,
+      service: serviceRef,
       email: emailRef,
       age: ageRef,
       gender: genderRef,
+      postalCode: postalCodeRef,
+      race: raceRef,
       consent: consentRef,
     } as const;
     const first = order.find((k) => errs[k]);
@@ -246,15 +363,33 @@ const FeedbackForm = ({
       reaction: selectedReaction as string,
       ...(trimmedDescription ? { description: trimmedDescription } : {}),
       ...(emailMode !== "off" && email.trim() ? { email: email.trim() } : {}),
-      ...(genderMode !== "off" && gender.trim() ? { gender: gender.trim() } : {}),
+      ...(genderMode !== "off" && gender.trim()
+        ? { gender: gender.trim() }
+        : {}),
       ...(ageMode !== "off" && age.trim() ? { age: Number(age) } : {}),
+      ...(postalMode !== "off" && postalCode.trim()
+        ? { postal_code: postalCode.trim() }
+        : {}),
+      ...(serviceMode !== "off" && selectedProductIds.length
+        ? { product_ids: selectedProductIds }
+        : {}),
+      ...(raceMode !== "off" &&
+      buildRaceAndEthnicityPayload(demographics, ethnicities, races)
+        ? {
+            race_and_ethnicity: buildRaceAndEthnicityPayload(
+              demographics,
+              ethnicities,
+              races
+            ),
+          }
+        : {}),
     });
 
     setSubmitting(false);
 
     if (!["200", "201"].includes(String(response?.status))) {
       toast.error(
-        response?.data?.message ?? "Something went wrong. Please try again."
+        response?.data?.message ?? "Something went wrong. Please try again.",
       );
       return;
     }
@@ -265,7 +400,19 @@ const FeedbackForm = ({
       email,
       age,
       gender,
+      postalCode,
       description,
+      productIds: selectedProductIds,
+      demographics,
+      // Persist resolved names too, so the restored summary needs no lookup.
+      serviceNames: products
+        .filter((p) => selectedProductIds.includes(p.product_id))
+        .map((p) => p.name),
+      raceAndEthnicity: buildRaceAndEthnicityPayload(
+        demographics,
+        ethnicities,
+        races
+      ),
     });
 
     setSubmitted(true);
@@ -280,7 +427,22 @@ const FeedbackForm = ({
         email={emailMode !== "off" ? email : ""}
         age={ageMode !== "off" ? age : ""}
         gender={genderMode !== "off" ? gender : ""}
+        postalCode={postalCode}
+        services={
+          serviceMode !== "off"
+            ? (initialSubmission?.serviceNames ??
+              products
+                .filter((p) => selectedProductIds.includes(p.product_id))
+                .map((p) => p.name))
+            : []
+        }
         description={description}
+        raceAndEthnicity={
+          raceMode !== "off"
+            ? (initialSubmission?.raceAndEthnicity ??
+              buildRaceAndEthnicityPayload(demographics, ethnicities, races))
+            : undefined
+        }
       />
     );
   }
@@ -338,14 +500,18 @@ const FeedbackForm = ({
             {(() => {
               const r = reactions.find((x) => x.alt === selectedReaction);
               if (!r) return null;
-              const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+              const handlePointerDown = (
+                e: React.PointerEvent<HTMLButtonElement>,
+              ) => {
                 e.preventDefault();
                 (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
                 setIsDragging(true);
                 dragStartXRef.current = e.clientX;
                 didDragRef.current = false;
               };
-              const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+              const handlePointerMove = (
+                e: React.PointerEvent<HTMLButtonElement>,
+              ) => {
                 if (!isDragging) return;
                 const row = ratingRowRef.current;
                 if (!row) return;
@@ -365,12 +531,16 @@ const FeedbackForm = ({
                 const n = nearestRatingFromX(x);
                 if (n !== selectedRating) handleRatingClick(n);
               };
-              const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+              const handlePointerUp = (
+                e: React.PointerEvent<HTMLButtonElement>,
+              ) => {
                 if (!isDragging) return;
                 setIsDragging(false);
                 dragStartXRef.current = null;
                 try {
-                  (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                  (e.currentTarget as HTMLElement).releasePointerCapture(
+                    e.pointerId,
+                  );
                 } catch {
                   /* noop */
                 }
@@ -383,7 +553,9 @@ const FeedbackForm = ({
                 left: reactionLeft ?? undefined,
                 top: 0,
                 transform: "translate(-50%, -50%)",
-                transition: isDragging ? "none" : "left 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+                transition: isDragging
+                  ? "none"
+                  : "left 220ms cubic-bezier(0.22, 1, 0.36, 1)",
                 touchAction: "none",
               };
               return (
@@ -454,6 +626,101 @@ const FeedbackForm = ({
         </div>
       )}
 
+      {serviceMode !== "off" && (
+        <div className="mb-5">
+          <label
+            className={`field-label ${serviceMode === "required" ? "required" : ""}`}
+          >
+            Business Service
+          </label>
+          <div className="mt-2">
+            <BusinessServiceField
+              ref={serviceRef}
+              products={products}
+              value={selectedProductIds}
+              onChange={(v) => {
+                clearError("service");
+                setSelectedProductIds(v);
+              }}
+              required={serviceMode === "required"}
+              error={!!errors.service}
+            />
+          </div>
+          {errors.service && (
+            <p className="mt-1.5 text-xs text-red-500">{errors.service}</p>
+          )}
+        </div>
+      )}
+
+      {genderMode !== "off" && (
+        <div className="mb-5">
+          <label
+            className={`field-label ${genderMode === "required" ? "required" : ""}`}
+          >
+            Enter Your Gender
+          </label>
+          <SelectDropdown
+            ref={genderRef}
+            id="gender"
+            value={gender}
+            onChange={(v) => {
+              clearError("gender");
+              setGender(v);
+            }}
+            options={GENDER_OPTIONS}
+            placeholder="Select your gender"
+            error={!!errors.gender}
+          />
+          {errors.gender && (
+            <p className="mt-1.5 text-xs text-red-500">{errors.gender}</p>
+          )}
+        </div>
+      )}
+
+      {postalMode !== "off" && (
+        <div className="mb-5">
+          <label
+            className={`field-label ${postalMode === "required" ? "required" : ""}`}
+            htmlFor="postal-code"
+          >
+            Postal Code
+          </label>
+          <input
+            ref={postalCodeRef}
+            id="postal-code"
+            type="text"
+            maxLength={12}
+            placeholder="e.g. 380015 or SW1A 1AA"
+            value={postalCode}
+            onChange={(e) => {
+              clearError("postalCode");
+              setPostalCode(
+                e.target.value.replace(/[^A-Za-z0-9\- ]/g, "").slice(0, 12),
+              );
+            }}
+            className={`field-input ${errors.postalCode ? "border-red-500" : ""}`}
+          />
+          {errors.postalCode && (
+            <p className="mt-1.5 text-xs text-red-500">{errors.postalCode}</p>
+          )}
+        </div>
+      )}
+
+      {raceMode !== "off" && (
+        <div ref={raceRef}>
+          <EthnicityRaceFields
+            idPrefix="feedback"
+            required={raceMode === "required"}
+            error={errors.race}
+            value={demographics}
+            onChange={(v) => {
+              clearError("race");
+              setDemographics(v);
+            }}
+          />
+        </div>
+      )}
+
       {emailMode !== "off" && (
         <div className="mb-5">
           <label
@@ -509,31 +776,6 @@ const FeedbackForm = ({
         </div>
       )}
 
-      {genderMode !== "off" && (
-        <div className="mb-5">
-          <label
-            className={`field-label ${genderMode === "required" ? "required" : ""}`}
-            htmlFor="gender"
-          >
-            Enter Your Gender
-          </label>
-          <SelectDropdown
-            ref={genderRef}
-            id="gender"
-            value={gender}
-            onChange={(v) => {
-              clearError("gender");
-              setGender(v);
-            }}
-            options={GENDER_OPTIONS}
-            placeholder="Select your gender"
-            error={!!errors.gender}
-          />
-          {errors.gender && (
-            <p className="mt-1.5 text-xs text-red-500">{errors.gender}</p>
-          )}
-        </div>
-      )}
       <div className="mb-5">
         <label className="field-label" htmlFor="description">
           Description
@@ -568,9 +810,12 @@ const FeedbackForm = ({
               errors.consent ? "border border-red-500" : ""
             }`}
           />
-          <label htmlFor="consent" className="text-[13px] leading-snug text-placeholder cursor-pointer">
-            I acknowledge the sharing of my personal information and consent to its
-            collection, use, and processing for the intended purposes.
+          <label
+            htmlFor="consent"
+            className="text-[13px] leading-snug text-placeholder cursor-pointer"
+          >
+            I acknowledge the sharing of my personal information and consent to
+            its collection, use, and processing for the intended purposes.
             <span className="text-red-500 ml-0.5">*</span>
           </label>
         </div>

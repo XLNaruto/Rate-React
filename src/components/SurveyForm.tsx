@@ -3,8 +3,17 @@ import { toast } from "sonner";
 import SurveyReactionRow, { type SurveyRateReactValue } from "./SurveyReactionRow";
 import SurveySummary from "./SurveySummary";
 import SelectDropdown from "./SelectDropdown";
+import EthnicityRaceFields from "./EthnicityRaceFields";
 import { submitReview, type SurveyAnswer } from "../api";
 import { saveSubmission } from "../utils/SubmissionStore";
+import { useDemographicsData } from "../hooks/useDemographicsData";
+import {
+  buildRaceAndEthnicityPayload,
+  emptyDemographics,
+  validateRequiredDemographics,
+  type DemographicsValue,
+  type RaceAndEthnicityPayload,
+} from "../data/demographics";
 
 const GENDER_OPTIONS = [
   { label: "Male", value: "male" },
@@ -18,6 +27,8 @@ type UserInfoModes = {
   email_mode?: FieldMode | string;
   age_mode?: FieldMode | string;
   gender_mode?: FieldMode | string;
+  postal_code_mode?: FieldMode | string;
+  race_mode?: FieldMode | string;
 };
 
 export type SurveyQuestion = {
@@ -34,7 +45,12 @@ type SurveySubmission = {
   email: string;
   age: string;
   gender: string;
+  postalCode: string;
   description: string;
+  demographics?: DemographicsValue;
+  // Resolved names captured at submit time so the restored summary renders
+  // straight from local data — no id→list lookup that could go stale.
+  raceAndEthnicity?: RaceAndEthnicityPayload;
 };
 
 type SurveyFormProps = {
@@ -79,6 +95,12 @@ const SurveyForm = ({
   const emailMode = (userInfoModes?.email_mode as FieldMode) ?? "off";
   const ageMode = (userInfoModes?.age_mode as FieldMode) ?? "off";
   const genderMode = (userInfoModes?.gender_mode as FieldMode) ?? "off";
+  // Postal code and ethnicity/race were always shown before these modes
+  // existed, so default to "optional" (visible, not enforced) when absent.
+  const postalMode = (userInfoModes?.postal_code_mode as FieldMode) ?? "optional";
+  const raceMode = (userInfoModes?.race_mode as FieldMode) ?? "optional";
+  // Ethnicity/race reference data — used to resolve ids→names for the payload.
+  const { ethnicities, races } = useDemographicsData();
 
   const sorted = [...(questions ?? [])].sort(
     (a, b) => (a.position ?? 0) - (b.position ?? 0)
@@ -93,8 +115,14 @@ const SurveyForm = ({
   const [email, setEmail] = useState(initialSubmission?.email ?? "");
   const [age, setAge] = useState(initialSubmission?.age ?? "");
   const [gender, setGender] = useState(initialSubmission?.gender ?? "");
+  const [postalCode, setPostalCode] = useState(
+    initialSubmission?.postalCode ?? ""
+  );
   const [description, setDescription] = useState(
     initialSubmission?.description ?? ""
+  );
+  const [demographics, setDemographics] = useState<DemographicsValue>(
+    initialSubmission?.demographics ?? emptyDemographics
   );
   const [consent, setConsent] = useState(!!initialSubmission);
   const [submitted, setSubmitted] = useState(!!initialSubmission);
@@ -104,6 +132,8 @@ const SurveyForm = ({
   const emailRef = useRef<HTMLInputElement>(null);
   const ageRef = useRef<HTMLInputElement>(null);
   const genderRef = useRef<HTMLButtonElement>(null);
+  const postalCodeRef = useRef<HTMLInputElement>(null);
+  const raceRef = useRef<HTMLDivElement>(null);
   const consentRef = useRef<HTMLDivElement>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -216,6 +246,29 @@ const SurveyForm = ({
     if (genderMode === "required" && gender.trim() === "")
       e.gender = "Gender is required.";
 
+    // Postal code: required when the mode says so; otherwise, when filled, it
+    // must be 3–12 characters of letters, digits, dashes or spaces (postal-code
+    // formats across countries, e.g. UK "SW1A 1AA" / Canada "K1A-0B1").
+    if (postalMode === "required" && postalCode.trim() === "")
+      e.postalCode = "Postal code is required.";
+    else if (
+      postalMode !== "off" &&
+      postalCode.trim() &&
+      !/^[A-Za-z0-9\- ]{3,12}$/.test(postalCode.trim())
+    )
+      e.postalCode = "Enter a valid postal code (3–12 characters).";
+
+    // Ethnicity/race: when required, every level that has options must be
+    // filled — ethnicity (+ its sub-ethnicities), race(s) (+ their sub-races).
+    if (raceMode === "required") {
+      const raceErr = validateRequiredDemographics(
+        demographics,
+        ethnicities,
+        races
+      );
+      if (raceErr) e.race = raceErr.message;
+    }
+
     if (!consent) e.consent = "Please acknowledge and consent to continue.";
 
     return e;
@@ -226,6 +279,8 @@ const SurveyForm = ({
       if (key === "email") return emailRef.current;
       if (key === "age") return ageRef.current;
       if (key === "gender") return genderRef.current;
+      if (key === "postalCode") return postalCodeRef.current;
+      if (key === "race") return raceRef.current;
       if (key === "consent") return consentRef.current;
       const base = key.endsWith(":rate") ? key.slice(0, -5) : key;
       return questionRefs.current[base] ?? null;
@@ -235,6 +290,8 @@ const SurveyForm = ({
       "email",
       "age",
       "gender",
+      "postalCode",
+      "race",
       "consent",
     ];
     const first = order.find((k) => errs[k]);
@@ -269,6 +326,19 @@ const SurveyForm = ({
       ...(emailMode !== "off" && email.trim() ? { email: email.trim() } : {}),
       ...(genderMode !== "off" && gender.trim() ? { gender: gender.trim() } : {}),
       ...(ageMode !== "off" && age.trim() ? { age: Number(age) } : {}),
+      ...(postalMode !== "off" && postalCode.trim()
+        ? { postal_code: postalCode.trim() }
+        : {}),
+      ...(raceMode !== "off" &&
+      buildRaceAndEthnicityPayload(demographics, ethnicities, races)
+        ? {
+            race_and_ethnicity: buildRaceAndEthnicityPayload(
+              demographics,
+              ethnicities,
+              races
+            ),
+          }
+        : {}),
     });
     setSubmitting(false);
 
@@ -285,7 +355,15 @@ const SurveyForm = ({
       email,
       age,
       gender,
+      postalCode,
       description,
+      demographics,
+      // Persist resolved names too, so the restored summary needs no lookup.
+      raceAndEthnicity: buildRaceAndEthnicityPayload(
+        demographics,
+        ethnicities,
+        races
+      ),
     });
 
     setSubmitted(true);
@@ -301,7 +379,14 @@ const SurveyForm = ({
         email={emailMode !== "off" ? email : ""}
         age={ageMode !== "off" ? age : ""}
         gender={genderMode !== "off" ? gender : ""}
+        postalCode={postalMode !== "off" ? postalCode : ""}
         description={description}
+        raceAndEthnicity={
+          raceMode !== "off"
+            ? (initialSubmission?.raceAndEthnicity ??
+              buildRaceAndEthnicityPayload(demographics, ethnicities, races))
+            : undefined
+        }
       />
     );
   }
@@ -397,8 +482,77 @@ const SurveyForm = ({
         </div>
       ))}
 
-      {emailMode !== "off" && (
+      {genderMode !== "off" && (
         <div className="mb-5 mt-6">
+          <label
+            className={`field-label ${genderMode === "required" ? "required" : ""}`}
+          >
+            Enter Your Gender
+          </label>
+          <SelectDropdown
+            ref={genderRef}
+            id="survey-gender"
+            value={gender}
+            onChange={(v) => {
+              clearError("gender");
+              setGender(v);
+            }}
+            options={GENDER_OPTIONS}
+            placeholder="Select your gender"
+            error={!!errors.gender}
+          />
+          {errors.gender && (
+            <p className="mt-1.5 text-xs text-red-500">{errors.gender}</p>
+          )}
+        </div>
+      )}
+
+      {postalMode !== "off" && (
+        <div className="mb-5">
+          <label
+            className={`field-label ${postalMode === "required" ? "required" : ""}`}
+            htmlFor="survey-postal-code"
+          >
+            Postal Code
+          </label>
+          <input
+            ref={postalCodeRef}
+            id="survey-postal-code"
+            type="text"
+            maxLength={12}
+            placeholder="e.g. 380015 or SW1A 1AA"
+            value={postalCode}
+            onChange={(e) => {
+              clearError("postalCode");
+              setPostalCode(
+                e.target.value.replace(/[^A-Za-z0-9\- ]/g, "").slice(0, 12)
+              );
+            }}
+            className={`field-input ${errors.postalCode ? "border-red-500" : ""}`}
+          />
+          {errors.postalCode && (
+            <p className="mt-1.5 text-xs text-red-500">{errors.postalCode}</p>
+          )}
+        </div>
+      )}
+
+      {raceMode !== "off" && (
+        <div ref={raceRef}>
+          <EthnicityRaceFields
+            idPrefix="survey"
+            required={raceMode === "required"}
+            error={errors.race}
+            value={demographics}
+            onChange={(v) => {
+              clearError("race");
+              setDemographics(v);
+            }}
+          />
+        </div>
+      )}
+
+      {emailMode !== "off" && (
+        <div className="mb-5">
           <label
             className={`field-label ${emailMode === "required" ? "required" : ""}`}
             htmlFor="survey-email"
@@ -448,32 +602,6 @@ const SurveyForm = ({
           />
           {errors.age && (
             <p className="mt-1.5 text-xs text-red-500">{errors.age}</p>
-          )}
-        </div>
-      )}
-
-      {genderMode !== "off" && (
-        <div className="mb-5">
-          <label
-            className={`field-label ${genderMode === "required" ? "required" : ""}`}
-            htmlFor="survey-gender"
-          >
-            Enter Your Gender
-          </label>
-          <SelectDropdown
-            ref={genderRef}
-            id="survey-gender"
-            value={gender}
-            onChange={(v) => {
-              clearError("gender");
-              setGender(v);
-            }}
-            options={GENDER_OPTIONS}
-            placeholder="Select your gender"
-            error={!!errors.gender}
-          />
-          {errors.gender && (
-            <p className="mt-1.5 text-xs text-red-500">{errors.gender}</p>
           )}
         </div>
       )}

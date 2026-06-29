@@ -24,8 +24,8 @@ const resolveSrc = (src: string) =>
   !src
     ? BLANK_IMAGE
     : /^(https?:)?\/\//i.test(src) || src.startsWith("data:")
-    ? src
-    : toAbsoluteUrl(src);
+      ? src
+      : toAbsoluteUrl(src);
 
 const ScanQr = () => {
   const { slug = "" } = useParams<{ slug: string }>();
@@ -59,8 +59,7 @@ const ScanQr = () => {
       //    first visit there's no cache, so this is what hides the skeleton.
       //    Skip it entirely while a rate-limit window is open — the gate is
       //    already covering the page and the request would just 429 again.
-      const result =
-        slug && !isRateLimited() ? await getScanQr(slug) : null;
+      const result = slug && !isRateLimited() ? await getScanQr(slug) : null;
       if (cancelled) return;
       if (result?.status === "ok") {
         setData(result.data);
@@ -103,7 +102,6 @@ const ScanQr = () => {
       <div className="w-full p-4">
         <div className="sm:w-[370px] mx-auto">
           <ExperienceHeader variant={submitted ? "thanks" : "intro"} />
-
           <div className="mb-5 animate-fade-in-up [animation-delay:80ms]">
             <h5 className="text-center text-placeholder text-[14px] mb-2">
               Business

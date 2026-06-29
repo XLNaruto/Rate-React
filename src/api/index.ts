@@ -1,4 +1,12 @@
 import { apiHeader, getData, postData } from "../utils/ApiHelper";
+import {
+  mapEthnicityTree,
+  mapRaceTree,
+  type RaceAndEthnicityPayload,
+  type DemographicTreeNode,
+  type EthnicityCategory,
+  type RaceCategory,
+} from "../data/demographics";
 
 // Outcome of a scan-qr fetch. The caller branches on `status` so it can tell a
 // genuine "this QR doesn't exist" (404) apart from a transient failure or a
@@ -14,7 +22,7 @@ export const getScanQr = async (slug: string): Promise<ScanQrResult> => {
   const response: any = await getData(
     `public/scan-qr/${encodeURIComponent(slug)}`,
     {},
-    apiHeader(false)
+    apiHeader(false),
   );
 
   const code = Number(response?.status);
@@ -24,6 +32,64 @@ export const getScanQr = async (slug: string): Promise<ScanQrResult> => {
 
   console.log("getScanQr failed:", response?.data?.message ?? response?.status);
   return { status: "error" };
+};
+
+// A selectable business service/product offered to customers on a business QR.
+// `image` is optional — it's set from the admin panel and may be absent.
+export type ScanQrProduct = {
+  product_id: string;
+  name: string;
+  image?: string | null;
+};
+
+// GET /public/scan-qr/{slug}/products  — the services a customer can pick from
+// on a business QR. Returns [] on any non-200 so the caller can render the rest
+// of the form regardless (the field just shows no options).
+export const getScanQrProducts = async (
+  slug: string,
+): Promise<ScanQrProduct[]> => {
+  const response: any = await getData(
+    `public/scan-qr/${encodeURIComponent(slug)}/products`,
+    {},
+    apiHeader(false),
+  );
+
+  if (Number(response?.status) === 200) {
+    // The endpoint may return a bare array or wrap it in { data: [...] }.
+    const body = response?.data;
+    const list = Array.isArray(body) ? body : body?.data;
+    if (Array.isArray(list)) return list as ScanQrProduct[];
+  }
+  return [];
+};
+
+// Pull the category tree out of a demographics response. The endpoint returns
+// the array under `data` ({ data: [...] }), but we also accept a bare array or
+// a `tree` key so a backend shape tweak won't silently break the fields.
+const extractTree = (body: any): DemographicTreeNode[] | null => {
+  const list = Array.isArray(body) ? body : (body?.data ?? body?.tree);
+  return Array.isArray(list) ? (list as DemographicTreeNode[]) : null;
+};
+
+// GET /public/ethnicity — ethnicity categories (+ sub-ethnicities as children).
+// Returns [] on any non-200 so the caller can fall back to its defaults.
+export const getEthnicities = async (): Promise<EthnicityCategory[]> => {
+  const response: any = await getData("public/ethnicity", {}, apiHeader(false));
+  if (Number(response?.status) === 200) {
+    const tree = extractTree(response?.data);
+    if (tree) return mapEthnicityTree(tree);
+  }
+  return [];
+};
+
+// GET /public/race — race categories (+ sub-races as children).
+export const getRaces = async (): Promise<RaceCategory[]> => {
+  const response: any = await getData("public/race", {}, apiHeader(false));
+  if (Number(response?.status) === 200) {
+    const tree = extractTree(response?.data);
+    if (tree) return mapRaceTree(tree);
+  }
+  return [];
 };
 
 // POST /public/reviews  — vendor (business), product & survey feedback save
@@ -38,6 +104,10 @@ export type QrReviewPayload = {
   email?: string;
   gender?: string;
   age?: number;
+  postal_code?: string;
+  // IDs of the business services the customer selected (business QR only).
+  product_ids?: string[];
+  race_and_ethnicity?: RaceAndEthnicityPayload;
 };
 
 // per-question answer inside a survey submission
@@ -60,12 +130,18 @@ export type SurveyReviewPayload = {
   email?: string;
   gender?: string;
   age?: number;
+  postal_code?: string;
+  race_and_ethnicity?: RaceAndEthnicityPayload;
   answers: SurveyAnswer[];
 };
 
 export type ReviewPayload = QrReviewPayload | SurveyReviewPayload;
 
 export const submitReview = async (payload: ReviewPayload) => {
-  const response: any = await postData("public/reviews", payload, apiHeader(false));
+  const response: any = await postData(
+    "public/reviews",
+    payload,
+    apiHeader(false),
+  );
   return response;
 };

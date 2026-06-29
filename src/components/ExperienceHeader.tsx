@@ -13,7 +13,7 @@ const presets: Record<
   intro: {
     title: "Tell us about your experience",
     description:
-      "You scanned a Rate & React QR. Choose how you want to leave feedback",
+      "You scanned a Rate + React QR. Choose how you want to leave feedback",
     bg: "bg-black",
     descColor: "text-muted",
   },

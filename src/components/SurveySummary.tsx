@@ -2,6 +2,11 @@ import { toAbsoluteUrl } from "../utils/Assets";
 import SmartImage from "./SmartImage";
 import type { SurveyQuestion } from "./SurveyForm";
 import type { SurveyRateReactValue } from "./SurveyReactionRow";
+import DemographicsSummary from "./DemographicsSummary";
+import {
+  hasRaceAndEthnicity,
+  type RaceAndEthnicityPayload,
+} from "../data/demographics";
 
 const reactionMap: Record<string, { gif: string; bg: string; size: number }> = {
   like: { gif: "media/reactions/like.gif", bg: "bg-react-like", size: 25 },
@@ -20,7 +25,9 @@ type SurveySummaryProps = {
   email?: string;
   age?: string;
   gender?: string;
+  postalCode?: string;
   description?: string;
+  raceAndEthnicity?: RaceAndEthnicityPayload;
 };
 
 const SectionDivider = () => <div className="h-[1px] bg-[#D8F4E8] my-5" />;
@@ -63,7 +70,9 @@ const SurveySummary = ({
   email,
   age,
   gender,
+  postalCode,
   description,
+  raceAndEthnicity,
 }: SurveySummaryProps) => {
   return (
     <div className="border border-success bg-success-tint rounded-[30px] p-5 animate-scale-in">
@@ -108,7 +117,12 @@ const SurveySummary = ({
         );
       })}
 
-      {(email || age || gender || description) && <SectionDivider />}
+      {(email ||
+        age ||
+        gender ||
+        postalCode ||
+        description ||
+        hasRaceAndEthnicity(raceAndEthnicity)) && <SectionDivider />}
 
       {email && (
         <div className="mb-4">
@@ -155,6 +169,21 @@ const SurveySummary = ({
         </div>
       )}
 
+      {postalCode && (
+        <div className="mb-4">
+          <div className="flex items-center gap-2 font-semibold mb-1">
+            <SmartImage
+              wrapperClassName="block w-[18px] h-[18px] shrink-0"
+              className="w-full h-full"
+              src={toAbsoluteUrl("media/icons/age.svg")}
+              alt="postal code"
+            />
+            Postal Code:
+          </div>
+          <p className="text-[14px] text-muted">{postalCode}</p>
+        </div>
+      )}
+
       {description && (
         <div>
           <div className="flex items-center gap-2 font-semibold mb-1">
@@ -169,6 +198,8 @@ const SurveySummary = ({
           <p className="text-[14px] text-muted">{description}</p>
         </div>
       )}
+
+      {raceAndEthnicity && <DemographicsSummary value={raceAndEthnicity} />}
     </div>
   );
 };
