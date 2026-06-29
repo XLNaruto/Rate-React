@@ -198,6 +198,49 @@ export const validateRequiredDemographics = (
   return null;
 };
 
+// Like the above, but reports EVERY missing required level at once (not just
+// the first) so each section can show its own inline message. Each level is
+// still only enforced when it actually has options to pick.
+export const collectRequiredDemographicErrors = (
+  v: DemographicsValue,
+  ethnicities: EthnicityCategory[],
+  races: RaceCategory[]
+): Partial<Record<DemographicField, string>> => {
+  const errors: Partial<Record<DemographicField, string>> = {};
+
+  // Ethnicity (+ its sub-ethnicities when the chosen ethnicity has any).
+  if (v.ethnicityCategoryId == null) {
+    errors.ethnicity = "Please select your ethnicity.";
+  } else {
+    const ethnicity = ethnicities.find(
+      (e) => e.categoryId === v.ethnicityCategoryId
+    );
+    if (
+      ethnicity &&
+      ethnicity.subEthnicities.length > 0 &&
+      !ethnicity.subEthnicities.some((s) => v.subEthnicityIds.includes(s.id))
+    )
+      errors.subEthnicity = "Please select your sub-ethnicity.";
+  }
+
+  // Race (at least one) + a sub-race for every chosen race that has sub-items.
+  if (v.raceCategoryIds.length === 0) {
+    errors.race = "Please select your race.";
+  } else {
+    const selectedRaces = races.filter((r) =>
+      v.raceCategoryIds.includes(r.categoryId)
+    );
+    const missingSubRace = selectedRaces.some(
+      (r) =>
+        r.subRaces.length > 0 &&
+        !r.subRaces.some((s) => v.subRaceIds.includes(s.id))
+    );
+    if (missingSubRace) errors.subRace = "Please select your sub-race.";
+  }
+
+  return errors;
+};
+
 // Shape sent to the API under `race_and_ethnicity`: full id+name objects (not
 // just ids) so the backend stores readable labels alongside the references.
 export type NamedItem = { id: number; name: string };

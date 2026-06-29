@@ -1,7 +1,9 @@
 import SelectDropdown from "./SelectDropdown";
 import { useDemographicsData } from "../hooks/useDemographicsData";
 import {
+  collectRequiredDemographicErrors,
   type DemographicsValue,
+  type DemographicField,
   type EthnicityCategory,
   type RaceCategory,
 } from "../data/demographics";
@@ -19,6 +21,9 @@ type EthnicityRaceFieldsProps = {
   // sub-ethnicity, race and sub-race labels show the required marker. Custom
   // race stays optional (free text).
   required?: boolean;
+  // Set after a failed submit; the message is shown under the exact level that
+  // is missing (ethnicity / sub-ethnicity / race / sub-race), not at the end.
+  error?: string;
 };
 
 const Pill = ({
@@ -50,11 +55,21 @@ const EthnicityRaceFields = ({
   races: racesProp,
   idPrefix = "demographics",
   required = false,
+  error,
 }: EthnicityRaceFieldsProps) => {
   const reqClass = required ? "required" : "";
   const live = useDemographicsData();
   const ethnicities = ethnicitiesProp ?? live.ethnicities;
   const races = racesProp ?? live.races;
+  // After a failed submit (error set), show a message under EVERY missing
+  // required level — not just the first — so each section flags itself.
+  const fieldErrors = error
+    ? collectRequiredDemographicErrors(value, ethnicities, races)
+    : {};
+  const FieldError = ({ field }: { field: DemographicField }) =>
+    fieldErrors[field] ? (
+      <p className="mt-1.5 text-xs text-red-500">{fieldErrors[field]}</p>
+    ) : null;
   const selectedEthnicity = ethnicities.find(
     (e) => e.categoryId === value.ethnicityCategoryId
   );
@@ -127,6 +142,7 @@ const EthnicityRaceFields = ({
           }))}
           placeholder="Select your ethnicity"
         />
+        <FieldError field="ethnicity" />
       </div>
 
       {/* Sub-ethnicities — only when the picked ethnicity has them; multi select */}
@@ -143,6 +159,7 @@ const EthnicityRaceFields = ({
               />
             ))}
           </div>
+          <FieldError field="subEthnicity" />
         </div>
       )}
 
@@ -159,6 +176,7 @@ const EthnicityRaceFields = ({
             />
           ))}
         </div>
+        <FieldError field="race" />
       </div>
 
       {/* Sub-races — only when a selected race has them; multi select */}
@@ -175,6 +193,7 @@ const EthnicityRaceFields = ({
               />
             ))}
           </div>
+          <FieldError field="subRace" />
         </div>
       )}
 
