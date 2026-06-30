@@ -111,6 +111,15 @@ body {
     @apply w-full rounded-2xl border border-border-soft px-4 py-3 text-sm placeholder:text-placeholder outline-none mt-2 resize-none h-28 transition focus:border-black focus:ring-2 focus:ring-black/10;
   }
 
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .nice-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 0, 0, 0.2) transparent;

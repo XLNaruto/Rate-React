@@ -2,26 +2,27 @@ import { toAbsoluteUrl } from "../utils/Assets";
 import SmartImage from "./SmartImage";
 import type { SurveyQuestion } from "./SurveyForm";
 import type { SurveyRateReactValue } from "./SurveyReactionRow";
+import type { ScanQrReaction } from "../api";
 import DemographicsSummary from "./DemographicsSummary";
 import {
   hasRaceAndEthnicity,
   type RaceAndEthnicityPayload,
 } from "../data/demographics";
 
-const reactionMap: Record<string, { gif: string; bg: string; size: number }> = {
-  like: { gif: "media/reactions/like.gif", bg: "bg-react-like", size: 25 },
-  love: { gif: "media/reactions/love.gif", bg: "bg-react-love", size: 30 },
-  fire: { gif: "media/reactions/fire.gif", bg: "bg-react-fire", size: 32 },
-  sad: { gif: "media/reactions/sad.gif", bg: "bg-react-sad", size: 32 },
-  haha: { gif: "media/reactions/haha.gif", bg: "bg-react-haha", size: 34 },
-  wow: { gif: "media/reactions/wow.gif", bg: "bg-react-wow", size: 34 },
-  angry: { gif: "media/reactions/angry.gif", bg: "bg-react-angry", size: 34 },
-};
+// Reaction media is a full CDN url from the API; fall back to resolving
+// project-relative paths through the asset base just in case.
+const resolveReactionSrc = (src: string) =>
+  !src
+    ? ""
+    : /^(https?:)?\/\//i.test(src) || src.startsWith("data:")
+      ? src
+      : toAbsoluteUrl(src);
 
 type SurveySummaryProps = {
   questions: SurveyQuestion[];
   answers: Record<string, any>;
   rrAnswers: Record<string, SurveyRateReactValue>;
+  reactions?: ScanQrReaction[];
   email?: string;
   age?: string;
   gender?: string;
@@ -36,22 +37,20 @@ const RateReactPill = ({
   reaction,
   rating,
 }: {
-  reaction: string;
+  reaction: ScanQrReaction;
   rating: number | null;
 }) => {
-  const r = reactionMap[reaction];
-  if (!r) return null;
   return (
     <div className="inline-flex items-center border border-success rounded-full px-2 py-1.5">
       <span
-        className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden border-2 border-white ${r.bg}`}
+        style={{ backgroundColor: reaction.background_color }}
+        className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden border-2 border-white"
       >
         <SmartImage
-          style={{ width: r.size, height: r.size }}
-          className="object-contain"
+          className="w-[26px] h-[26px] object-contain"
           wrapperClassName="rounded-full"
-          src={toAbsoluteUrl(r.gif)}
-          alt={reaction}
+          src={resolveReactionSrc(reaction.media_url)}
+          alt={reaction.label}
         />
       </span>
       {rating != null && (
@@ -67,6 +66,7 @@ const SurveySummary = ({
   questions,
   answers,
   rrAnswers,
+  reactions = [],
   email,
   age,
   gender,
@@ -74,6 +74,7 @@ const SurveySummary = ({
   description,
   raceAndEthnicity,
 }: SurveySummaryProps) => {
+  const reactionByType = new Map(reactions.map((r) => [r.type, r]));
   return (
     <div className="border border-success bg-success-tint rounded-[30px] p-5 animate-scale-in">
       <h1 className="text-[20px] font-bold mb-5">Thanks! Here's Your Response</h1>
@@ -109,8 +110,11 @@ const SurveySummary = ({
                 </div>
               )}
 
-              {rr?.reaction && (
-                <RateReactPill reaction={rr.reaction} rating={rr.rating ?? null} />
+              {rr?.reaction && reactionByType.has(rr.reaction) && (
+                <RateReactPill
+                  reaction={reactionByType.get(rr.reaction)!}
+                  rating={rr.rating ?? null}
+                />
               )}
             </div>
           </div>

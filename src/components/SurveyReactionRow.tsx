@@ -1,16 +1,17 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { toAbsoluteUrl } from "../utils/Assets";
 import SmartImage from "./SmartImage";
+import ReactionPicker from "./ReactionPicker";
+import type { ScanQrReaction } from "../api";
 
-const reactions = [
-  { gif: "media/reactions/like.gif", alt: "like", bg: "bg-react-like", size: 24 },
-  { gif: "media/reactions/love.gif", alt: "love", bg: "bg-react-love", size: 28 },
-  { gif: "media/reactions/fire.gif", alt: "fire", bg: "bg-react-fire", size: 30 },
-  { gif: "media/reactions/sad.gif", alt: "sad", bg: "bg-react-sad", size: 30 },
-  { gif: "media/reactions/haha.gif", alt: "haha", bg: "bg-react-haha", size: 32 },
-  { gif: "media/reactions/wow.gif", alt: "wow", bg: "bg-react-wow", size: 32 },
-  { gif: "media/reactions/angry.gif", alt: "angry", bg: "bg-react-angry", size: 32 },
-];
+// Reaction media is a full CDN url from the API; fall back to resolving
+// project-relative paths through the asset base just in case.
+const resolveReactionSrc = (src: string) =>
+  !src
+    ? ""
+    : /^(https?:)?\/\//i.test(src) || src.startsWith("data:")
+      ? src
+      : toAbsoluteUrl(src);
 
 const ratings = [1, 2, 3, 4, 5];
 
@@ -22,10 +23,14 @@ export type SurveyRateReactValue = {
 type Props = {
   value: SurveyRateReactValue;
   onChange: (next: SurveyRateReactValue) => void;
+  reactions?: ScanQrReaction[];
 };
 
-const SurveyReactionRow = ({ value, onChange }: Props) => {
+const SurveyReactionRow = ({ value, onChange, reactions = [] }: Props) => {
   const { reaction: selectedReaction, rating: selectedRating } = value;
+  const reactionList = [...reactions].sort(
+    (a, b) => a.display_order - b.display_order,
+  );
 
   const rowRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -102,28 +107,16 @@ const SurveyReactionRow = ({ value, onChange }: Props) => {
 
   if (!selectedReaction) {
     return (
-      <div className="flex justify-between items-center gap-2">
-        {reactions.map((r) => (
-          <button
-            key={r.alt}
-            type="button"
-            onClick={() => onChange({ reaction: r.alt, rating: null })}
-            className={`relative w-[40px] h-[40px] rounded-full flex items-center justify-center overflow-hidden cursor-pointer border-2 border-white transition-all duration-200 ease-out hover:scale-125 active:scale-110 ${r.bg}`}
-          >
-            <SmartImage
-              style={{ width: r.size, height: r.size }}
-              className="object-contain"
-              wrapperClassName="rounded-full"
-              src={toAbsoluteUrl(r.gif)}
-              alt={r.alt}
-            />
-          </button>
-        ))}
-      </div>
+      <ReactionPicker
+        reactions={reactionList}
+        onSelect={(type) => onChange({ reaction: type, rating: null })}
+        circleClassName="border-2 border-white"
+      />
     );
   }
 
-  const r = reactions.find((x) => x.alt === selectedReaction)!;
+  const r = reactionList.find((x) => x.type === selectedReaction);
+  if (!r) return null;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -175,6 +168,7 @@ const SurveyReactionRow = ({ value, onChange }: Props) => {
       ? "none"
       : "left 220ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
     touchAction: "none",
+    backgroundColor: r.background_color,
   };
 
   return (
@@ -198,16 +192,15 @@ const SurveyReactionRow = ({ value, onChange }: Props) => {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         style={style}
-        className={`absolute z-20 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing border-2 border-white shadow-md ${r.bg} ${
+        className={`absolute z-20 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing border-2 border-white shadow-md ${
           isDragging ? "scale-110" : ""
         } transition-transform duration-150 ease-out`}
       >
         <SmartImage
-          style={{ width: r.size, height: r.size }}
-          className="object-contain pointer-events-none"
+          className="w-[22px] h-[22px] object-contain pointer-events-none"
           wrapperClassName="rounded-full"
-          src={toAbsoluteUrl(r.gif)}
-          alt={r.alt}
+          src={resolveReactionSrc(r.media_url)}
+          alt={r.label}
         />
       </button>
       {ratings.map((n, i) => {

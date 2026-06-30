@@ -34,6 +34,19 @@ export const getScanQr = async (slug: string): Promise<ScanQrResult> => {
   return { status: "error" };
 };
 
+// A reaction the customer can pick, configured per-vendor in the admin panel and
+// delivered inline with the scan-qr payload (`data.reactions`). `type` is the
+// stable identifier sent back on submit; `media_url` is a full CDN url and
+// `background_color` a hex string applied as the chip's background.
+export type ScanQrReaction = {
+  reaction_id: string;
+  type: string;
+  label: string;
+  media_url: string;
+  background_color: string;
+  display_order: number;
+};
+
 // A selectable business service/product offered to customers on a business QR.
 // `image` is optional — it's set from the admin panel and may be absent.
 export type ScanQrProduct = {

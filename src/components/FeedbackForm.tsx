@@ -2,11 +2,17 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { toAbsoluteUrl } from "../utils/Assets";
 import FeedbackSummary from "./FeedbackSummary";
+import ReactionPicker from "./ReactionPicker";
 import SmartImage from "./SmartImage";
 import SelectDropdown from "./SelectDropdown";
 import EthnicityRaceFields from "./EthnicityRaceFields";
 import BusinessServiceField from "./BusinessServiceField";
-import { submitReview, getScanQrProducts, type ScanQrProduct } from "../api";
+import {
+  submitReview,
+  getScanQrProducts,
+  type ScanQrProduct,
+  type ScanQrReaction,
+} from "../api";
 import { saveSubmission } from "../utils/SubmissionStore";
 import { useDemographicsData } from "../hooks/useDemographicsData";
 import {
@@ -23,40 +29,14 @@ const GENDER_OPTIONS = [
   { label: "Other", value: "other" },
 ];
 
-const reactions = [
-  {
-    gif: "media/reactions/like.gif",
-    alt: "like",
-    bg: "bg-react-like",
-    size: 24,
-  },
-  {
-    gif: "media/reactions/love.gif",
-    alt: "love",
-    bg: "bg-react-love",
-    size: 28,
-  },
-  {
-    gif: "media/reactions/fire.gif",
-    alt: "fire",
-    bg: "bg-react-fire",
-    size: 30,
-  },
-  { gif: "media/reactions/sad.gif", alt: "sad", bg: "bg-react-sad", size: 30 },
-  {
-    gif: "media/reactions/haha.gif",
-    alt: "haha",
-    bg: "bg-react-haha",
-    size: 32,
-  },
-  { gif: "media/reactions/wow.gif", alt: "wow", bg: "bg-react-wow", size: 32 },
-  {
-    gif: "media/reactions/angry.gif",
-    alt: "angry",
-    bg: "bg-react-angry",
-    size: 32,
-  },
-];
+// Reaction media is a full CDN url from the API; fall back to resolving
+// project-relative paths through the asset base just in case.
+const resolveReactionSrc = (src: string) =>
+  !src
+    ? ""
+    : /^(https?:)?\/\//i.test(src) || src.startsWith("data:")
+      ? src
+      : toAbsoluteUrl(src);
 
 const ratings = [1, 2, 3, 4, 5];
 
@@ -73,6 +53,11 @@ type UserInfoModes = {
 
 type FeedbackSubmission = {
   reaction: string | null;
+  // Reaction display info captured at submit time so the restored summary can
+  // render even if the vendor's reaction set later changes (mirrors serviceNames).
+  reactionLabel?: string;
+  reactionMediaUrl?: string;
+  reactionBg?: string;
   rating: number | null;
   email: string;
   age: string;
@@ -94,6 +79,7 @@ type FeedbackFormProps = {
   slug: string;
   initialSubmission?: FeedbackSubmission | null;
   userInfoModes?: UserInfoModes;
+  reactions?: ScanQrReaction[];
 };
 
 const FeedbackForm = ({
@@ -103,13 +89,20 @@ const FeedbackForm = ({
   slug,
   initialSubmission,
   userInfoModes,
+  reactions = [],
 }: FeedbackFormProps) => {
+  // Reactions are configured per-vendor and arrive in display order; sort
+  // defensively so the row order is stable regardless of payload ordering.
+  const reactionList = [...reactions].sort(
+    (a, b) => a.display_order - b.display_order,
+  );
   const emailMode = (userInfoModes?.email_mode as FieldMode) ?? "required";
   const ageMode = (userInfoModes?.age_mode as FieldMode) ?? "off";
   const genderMode = (userInfoModes?.gender_mode as FieldMode) ?? "off";
   // Postal code and ethnicity/race were always shown before these modes
   // existed, so default to "optional" (visible, not enforced) when absent.
-  const postalMode = (userInfoModes?.postal_code_mode as FieldMode) ?? "optional";
+  const postalMode =
+    (userInfoModes?.postal_code_mode as FieldMode) ?? "optional";
   const raceMode = (userInfoModes?.race_mode as FieldMode) ?? "optional";
   // Live ethnicity/race reference data (with static fallback) — used both to
   // render the fields and to resolve ids→names for the save payload.
@@ -287,7 +280,8 @@ const FeedbackForm = ({
     // "SW1A 1AA" / Canada "K1A-0B1"); required only when the mode says so.
     if (postalMode !== "off") {
       const v = postalCode.trim();
-      if (!v && postalMode === "required") e.postalCode = "Postal code is required.";
+      if (!v && postalMode === "required")
+        e.postalCode = "Postal code is required.";
       else if (v && !/^[A-Za-z0-9\- ]{3,12}$/.test(v))
         e.postalCode = "Enter a valid postal code (3–12 characters).";
     }
@@ -299,7 +293,7 @@ const FeedbackForm = ({
       const raceErr = validateRequiredDemographics(
         demographics,
         ethnicities,
-        races
+        races,
       );
       if (raceErr) e.race = raceErr.message;
     }
@@ -379,7 +373,7 @@ const FeedbackForm = ({
             race_and_ethnicity: buildRaceAndEthnicityPayload(
               demographics,
               ethnicities,
-              races
+              races,
             ),
           }
         : {}),
@@ -394,8 +388,14 @@ const FeedbackForm = ({
       return;
     }
 
+    const chosenReaction = reactionList.find(
+      (r) => r.type === selectedReaction,
+    );
     await saveSubmission(slug, kind, {
       reaction: selectedReaction,
+      reactionLabel: chosenReaction?.label,
+      reactionMediaUrl: chosenReaction?.media_url,
+      reactionBg: chosenReaction?.background_color,
       rating: selectedRating,
       email,
       age,
@@ -411,7 +411,7 @@ const FeedbackForm = ({
       raceAndEthnicity: buildRaceAndEthnicityPayload(
         demographics,
         ethnicities,
-        races
+        races,
       ),
     });
 
@@ -423,6 +423,19 @@ const FeedbackForm = ({
     return (
       <FeedbackSummary
         reaction={selectedReaction}
+        reactionLabel={
+          reactionList.find((r) => r.type === selectedReaction)?.label ??
+          initialSubmission?.reactionLabel
+        }
+        reactionMediaUrl={resolveReactionSrc(
+          reactionList.find((r) => r.type === selectedReaction)?.media_url ??
+            initialSubmission?.reactionMediaUrl ??
+            "",
+        )}
+        reactionBg={
+          reactionList.find((r) => r.type === selectedReaction)
+            ?.background_color ?? initialSubmission?.reactionBg
+        }
         rating={selectedRating}
         email={emailMode !== "off" ? email : ""}
         age={ageMode !== "off" ? age : ""}
@@ -456,29 +469,17 @@ const FeedbackForm = ({
           </h1>
           <div
             ref={reactionRowRef}
-            className={`border rounded-[10rem] p-5 flex justify-between items-center gap-1.5 sm:gap-2.5 ${
+            className={`border rounded-[10rem] p-5 ${
               errors.reaction ? "border-red-500" : "border-border-mute"
             }`}
           >
-            {reactions.map((r) => (
-              <button
-                key={r.alt}
-                type="button"
-                onClick={() => {
-                  clearError("reaction");
-                  setSelectedReaction(r.alt);
-                }}
-                className={`group relative w-[40px] h-[40px] rounded-full flex items-center justify-center overflow-hidden cursor-pointer transition-transform duration-200 ease-out hover:scale-125 active:scale-110 ${r.bg}`}
-              >
-                <SmartImage
-                  style={{ width: r.size, height: r.size }}
-                  className="object-contain"
-                  wrapperClassName="rounded-full"
-                  src={toAbsoluteUrl(r.gif)}
-                  alt={r.alt}
-                />
-              </button>
-            ))}
+            <ReactionPicker
+              reactions={reactionList}
+              onSelect={(type) => {
+                clearError("reaction");
+                setSelectedReaction(type);
+              }}
+            />
           </div>
           {errors.reaction && (
             <p className="mt-1.5 text-xs text-red-500">{errors.reaction}</p>
@@ -498,7 +499,7 @@ const FeedbackForm = ({
             }`}
           >
             {(() => {
-              const r = reactions.find((x) => x.alt === selectedReaction);
+              const r = reactionList.find((x) => x.type === selectedReaction);
               if (!r) return null;
               const handlePointerDown = (
                 e: React.PointerEvent<HTMLButtonElement>,
@@ -557,6 +558,7 @@ const FeedbackForm = ({
                   ? "none"
                   : "left 220ms cubic-bezier(0.22, 1, 0.36, 1)",
                 touchAction: "none",
+                backgroundColor: r.background_color,
               };
               return (
                 <button
@@ -576,16 +578,15 @@ const FeedbackForm = ({
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
                   style={style}
-                  className={`absolute w-8 h-8 rounded-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing border-2 border-white shadow-md ${r.bg} ${
+                  className={`absolute w-8 h-8 rounded-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing border-2 border-white shadow-md ${
                     isDragging ? "scale-110" : ""
                   } transition-transform duration-150 ease-out`}
                 >
                   <SmartImage
-                    style={{ width: r.size, height: r.size }}
-                    className="object-contain pointer-events-none"
+                    className="w-[22px] h-[22px] object-contain pointer-events-none"
                     wrapperClassName="rounded-full"
-                    src={toAbsoluteUrl(r.gif)}
-                    alt={r.alt}
+                    src={resolveReactionSrc(r.media_url)}
+                    alt={r.label}
                   />
                 </button>
               );

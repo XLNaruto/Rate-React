@@ -4,7 +4,7 @@ import SurveyReactionRow, { type SurveyRateReactValue } from "./SurveyReactionRo
 import SurveySummary from "./SurveySummary";
 import SelectDropdown from "./SelectDropdown";
 import EthnicityRaceFields from "./EthnicityRaceFields";
-import { submitReview, type SurveyAnswer } from "../api";
+import { submitReview, type SurveyAnswer, type ScanQrReaction } from "../api";
 import { saveSubmission } from "../utils/SubmissionStore";
 import { useDemographicsData } from "../hooks/useDemographicsData";
 import {
@@ -60,6 +60,7 @@ type SurveyFormProps = {
   initialSubmission?: SurveySubmission | null;
   questions: SurveyQuestion[];
   userInfoModes?: UserInfoModes;
+  reactions?: ScanQrReaction[];
 };
 
 const emptyRR: SurveyRateReactValue = { reaction: null, rating: null };
@@ -91,6 +92,7 @@ const SurveyForm = ({
   initialSubmission,
   questions,
   userInfoModes,
+  reactions = [],
 }: SurveyFormProps) => {
   const emailMode = (userInfoModes?.email_mode as FieldMode) ?? "off";
   const ageMode = (userInfoModes?.age_mode as FieldMode) ?? "off";
@@ -376,6 +378,7 @@ const SurveyForm = ({
         questions={sorted}
         answers={answers}
         rrAnswers={rrAnswers}
+        reactions={reactions}
         email={emailMode !== "off" ? email : ""}
         age={ageMode !== "off" ? age : ""}
         gender={genderMode !== "off" ? gender : ""}
@@ -423,6 +426,7 @@ const SurveyForm = ({
               <SurveyReactionRow
                 value={rrAnswers[q.id] ?? emptyRR}
                 onChange={(v) => setRr(q.id, v)}
+                reactions={reactions}
               />
               {errors[q.id] && (
                 <p className="mt-3 text-xs text-red-500">{errors[q.id]}</p>
@@ -471,6 +475,7 @@ const SurveyForm = ({
               <SurveyReactionRow
                 value={rrAnswers[q.id] ?? emptyRR}
                 onChange={(v) => setRr(q.id, v)}
+                reactions={reactions}
               />
               {errors[`${q.id}:rate`] && (
                 <p className="mt-3 text-xs text-red-500">
