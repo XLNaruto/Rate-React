@@ -48,16 +48,21 @@ function esc(s) {
     .replace(/'/g, "&#39;");
 }
 
-// Crawlers cannot render SVG previews (WhatsApp/Facebook/iMessage). Fall back to
-// the raster default when the API gives us an SVG, a data: URI, or nothing.
-function pickImage(url) {
-  if (!url) return DEFAULT_IMAGE;
-  var u = String(url);
-  if (/^data:/i.test(u)) return DEFAULT_IMAGE;
-  if (/\.svg(\?|#|$)/i.test(u)) return DEFAULT_IMAGE;
-  if (/^https?:\/\//i.test(u)) return u;
-  // relative path from the API's asset host
-  return API_BASE.replace(/\/$/, "") + "/" + u.replace(/^\//, "");
+// Crawlers cannot render SVG previews (WhatsApp/Facebook/iMessage), so an SVG or
+// data: source is not usable. Try each candidate in order and return the first
+// usable raster URL; if none qualify, fall back to the branded default.
+function pickImage() {
+  for (var i = 0; i < arguments.length; i++) {
+    var url = arguments[i];
+    if (!url) continue;
+    var u = String(url);
+    if (/^data:/i.test(u)) continue;
+    if (/\.svg(\?|#|$)/i.test(u)) continue;
+    if (/^https?:\/\//i.test(u)) return u;
+    // relative path from the API's asset host
+    return API_BASE.replace(/\/$/, "") + "/" + u.replace(/^\//, "");
+  }
+  return DEFAULT_IMAGE;
 }
 
 function fetchJson(url) {
@@ -104,6 +109,7 @@ function fetchJson(url) {
 function buildMeta(slug, data) {
   var vendor = (data && data.vendor) || {};
   var product = (data && data.product) || {};
+  var qr = (data && data.qr) || {};
 
   var business = vendor.business_name || SITE_NAME;
   var productName = product.name || "";
@@ -111,7 +117,10 @@ function buildMeta(slug, data) {
   var description = productName
     ? "Rate your experience with " + productName + " at " + business + "."
     : "Rate and react to your experience at " + business + ".";
-  var image = pickImage(product.image || vendor.logo_url);
+  // Preview image priority: product photo → vendor logo → the QR code PNG →
+  // default. pickImage() skips SVG/data: sources, so image_png_url (always a
+  // raster PNG) is a safe last resort before the branded fallback.
+  var image = pickImage(product.image, vendor.logo_url, qr.image_png_url);
   var pageUrl = SITE_ORIGIN + "/" + encodeURIComponent(slug);
 
   return { title: title, description: description, image: image, url: pageUrl };
