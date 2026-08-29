@@ -136,7 +136,7 @@ const ReactionPicker = ({
               role="menu"
               className="absolute bottom-full right-0 mb-3 z-20 w-[260px] max-w-[80vw] rounded-3xl border border-border-mute bg-white p-3 shadow-xl origin-bottom-right animate-scale-in"
             >
-              <div className="grid grid-cols-4 gap-2.5 justify-items-center max-h-[220px] overflow-y-auto nice-scrollbar py-1">
+              <div className="grid grid-cols-4 gap-2.5 justify-items-center max-h-[220px] overflow-y-auto overflow-x-hidden nice-scrollbar px-1.5 py-1.5">
                 {reactions.map((r) => (
                   <ReactionCircle
                     key={r.reaction_id}
