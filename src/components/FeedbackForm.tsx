@@ -80,6 +80,8 @@ type FeedbackFormProps = {
   initialSubmission?: FeedbackSubmission | null;
   userInfoModes?: UserInfoModes;
   reactions?: ScanQrReaction[];
+  /** Vendor-configured reaction/rating prompt; falls back to the default copy. */
+  reviewQuestion?: string | null;
 };
 
 const FeedbackForm = ({
@@ -90,7 +92,13 @@ const FeedbackForm = ({
   initialSubmission,
   userInfoModes,
   reactions = [],
+  reviewQuestion,
 }: FeedbackFormProps) => {
+  // The admin can override the reaction/rating prompt per QR code; an empty or
+  // whitespace-only value means "use the default question".
+  const question =
+    reviewQuestion?.trim() ||
+    "How would you rate + react your business experience?";
   // Reactions are configured per-vendor and arrive in display order; sort
   // defensively so the row order is stable regardless of payload ordering.
   const reactionList = [...reactions].sort(
@@ -465,7 +473,7 @@ const FeedbackForm = ({
       {!selectedReaction && (
         <div className="animate-fade-in mb-5">
           <h1 className="text-[15px] font-medium required mb-3">
-            How would you rate your business experience?
+            {question}
           </h1>
           <div
             ref={reactionRowRef}
@@ -490,7 +498,7 @@ const FeedbackForm = ({
       {selectedReaction && (
         <div className="animate-fade-in mb-5">
           <h1 className="text-[15px] font-medium required mb-3">
-            How would you rate your business experience?
+            {question}
           </h1>
           <div
             ref={ratingRowRef}

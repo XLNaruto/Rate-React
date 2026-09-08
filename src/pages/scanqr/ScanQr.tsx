@@ -166,6 +166,7 @@ const ScanQr = () => {
             initialSubmission={submission}
             userInfoModes={data.user_info_modes}
             reactions={data.reactions ?? []}
+            reviewQuestion={qr?.review_question}
           />
         </div>
       </div>
@@ -195,6 +196,7 @@ const ScanQr = () => {
           initialSubmission={submission}
           userInfoModes={data.user_info_modes}
           reactions={data.reactions ?? []}
+          reviewQuestion={qr?.review_question}
         />
       </div>
     </div>
