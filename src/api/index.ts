@@ -14,6 +14,10 @@ import {
 export type ScanQrResult =
   | { status: "ok"; data: any }
   | { status: "not_found" } // 404 — invalid/expired slug, drop any cached page
+  // 403 — the slug is valid but the QR is closed to responses right now
+  // (paused / outside its schedule / response cap reached). `code` and
+  // `message` come straight from the API so the page can show its reason.
+  | { status: "closed"; code: string; message: string }
   | { status: "rate_limited" } // 429 — the global gate takes over
   | { status: "error" }; // network/5xx — keep whatever's cached
 
@@ -28,6 +32,16 @@ export const getScanQr = async (slug: string): Promise<ScanQrResult> => {
   const code = Number(response?.status);
   if (code === 200) return { status: "ok", data: response.data };
   if (code === 404) return { status: "not_found" };
+  if (code === 403) {
+    const body = response?.data ?? {};
+    return {
+      status: "closed",
+      code: String(body.error ?? "SCAN_NOT_ACCEPTING"),
+      message: String(
+        body.message ?? "This QR code is not accepting responses right now.",
+      ),
+    };
+  }
   if (code === 429) return { status: "rate_limited" };
 
   console.log("getScanQr failed:", response?.data?.message ?? response?.status);

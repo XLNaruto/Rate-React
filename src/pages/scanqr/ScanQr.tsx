@@ -7,6 +7,7 @@ import SurveyForm from "../../components/SurveyForm";
 import SmartImage from "../../components/SmartImage";
 import SkeletonReaction from "../../components/SkeletonReaction";
 import InvalidQr from "../../components/InvalidQr";
+import ScanClosed from "../../components/ScanClosed";
 import { toAbsoluteUrl } from "../../utils/Assets";
 import { getScanQr } from "../../api";
 import {
@@ -33,6 +34,12 @@ const ScanQr = () => {
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
   const [submission, setSubmission] = useState<any>(null);
+  // Set when the API answers 403: the slug is valid but the QR isn't taking
+  // responses right now. Takes precedence over any cached page below.
+  const [closed, setClosed] = useState<{
+    code: string;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +75,11 @@ const ScanQr = () => {
           setSubmission(saved.payload);
           setSubmitted(true);
         }
+      } else if (result?.status === "closed") {
+        // Valid slug, but responses are off. Keep the cached page in IndexedDB
+        // (it's still the right page once the business reopens) and show the
+        // reason the API gave us instead of the form.
+        setClosed({ code: result.code, message: result.message });
       } else if (result?.status === "not_found") {
         // The QR is genuinely gone: drop the stale cache so it can't keep
         // painting on later refreshes, and fall through to <InvalidQr/>.
@@ -85,6 +97,7 @@ const ScanQr = () => {
   }, [slug]);
 
   if (loading) return <SkeletonReaction />;
+  if (closed) return <ScanClosed code={closed.code} message={closed.message} />;
   if (!data) return <InvalidQr />;
 
   const { kind, qr, vendor, product, survey } = data;

@@ -19,6 +19,9 @@ const handleRateLimit = (res: any): boolean => {
   return false;
 };
 
+// 4xx responses (401/403/404/422 …) are returned to the caller as-is: this is a
+// public app with no user session, so the caller decides what to render — e.g. a
+// 403 SCAN_NOT_ACCEPTING becomes the "not accepting responses" screen.
 export const Securitykey = import.meta.env.VITE_APP_ENCRYPT_KEY || '';
 
 // API HEADER
@@ -51,19 +54,11 @@ export const postData = async (api: any, data: any, headers: any) => {
     const response = await axios.post(url, data, headers);
 
     if (handleRateLimit(response)) return response;
-    if (['401', '403'].includes(String(response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
     return response;
   } catch (error: any) {
     console.log('error ==============++==+=======+==+', error.message);
     console.log('error ==============++==+=======+==+', error);
     if (handleRateLimit(error?.response)) return error?.response;
-    if (['401', '403'].includes(String(error?.response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
     return error?.response;
   }
 };
@@ -79,18 +74,10 @@ export const getData = async (api: any, params: any, headers: any) => {
     });
 
     if (handleRateLimit(response)) return response;
-    if (['401', '403'].includes(String(response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
     return response;
   } catch (error: any) {
     console.log('Error:', error.message);
     if (handleRateLimit(error?.response)) return error?.response;
-    if (['401', '403'].includes(String(error?.response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
     return error?.response;
   }
 };
@@ -103,20 +90,12 @@ export const patchData = async (api: any, data: any, headers: any) => {
     const response = await axios.patch(url, data, headers);
 
     if (handleRateLimit(response)) return response;
-    if (['401', '403'].includes(String(response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
 
     return response;
   } catch (error: any) {
     console.log('Error:', error.message);
     console.log('Error:::::::::::::::::::::::::::::::::', error);
     if (handleRateLimit(error?.response)) return error?.response;
-    if (['401', '403'].includes(String(error?.response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
     return error?.response;
   }
 };
@@ -129,18 +108,10 @@ export const putData = async (api: any, data: any, headers: any) => {
     const response = await axios.put(url, data, headers);
 
     if (handleRateLimit(response)) return response;
-    if (['401', '403'].includes(String(response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
     return response;
   } catch (error: any) {
     console.log('Error:', error.message);
     if (handleRateLimit(error?.response)) return error?.response;
-    if (['401', '403'].includes(String(error?.response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
     return error?.response;
   }
 };
@@ -156,19 +127,11 @@ export const deleteData = async (api: any, data: any, headers: any) => {
     });
 
     if (handleRateLimit(response)) return response;
-    if (['401', '403'].includes(String(response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
     return response;
   } catch (error: any) {
     console.log('Error:', error.message);
 
     if (handleRateLimit(error?.response)) return error?.response;
-    if (['401', '403'].includes(String(error?.response?.status))) {
-      sessionStorage.clear();
-      location.reload();
-    }
 
     return error?.response;
   }
